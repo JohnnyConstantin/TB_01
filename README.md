@@ -1,5 +1,5 @@
 # Binance Trader (RC 2)
-# Test
+# Testasdasd
 This is an experimental bot for auto trading the binance.com exchange. [@yasinkuyu](https://twitter.com/yasinkuyu)
 
 ![Screenshot](https://github.com/yasinkuyu/binance-trader/blob/master/img/screenshot.png)
