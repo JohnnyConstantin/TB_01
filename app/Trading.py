@@ -384,22 +384,21 @@ class Trading():
     def action(self, symbol):
         #import ipdb; ipdb.set_trace()
 
-
         # Order amount
         quantity = self.quantity
-
+        print('QTY: ' + str(quantity))
         # Fetches the ticker price
         lastPrice = Orders.get_ticker(symbol)
-
+        print('LAST: ' + str(lastPrice))
         # Order book prices
         lastBid, lastAsk = Orders.get_order_book(symbol)
 
         # Target buy price, add little increase #87
         buyPrice = lastBid + self.increasing
-
+        print('BUY: ' + str(buyPrice))
         # Target sell price, decrease little 
         sellPrice = lastAsk - self.decreasing
-
+        print('SELL: ' + str(sellPrice) + '\n')
         # Spread ( profit )
         profitableSellingPrice = self.calc(lastBid)
 
