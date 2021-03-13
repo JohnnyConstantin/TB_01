@@ -14,6 +14,7 @@ import logging.handlers
 
 # Define Custom imports
 from Database import Database
+from Account import Account
 from Orders import Orders
 
 
@@ -51,7 +52,10 @@ class Trading():
     # percent (When you drop 10%, sell panic.)
     stop_loss = 0
 
-    # Buy/Sell qty
+    # order price (for print at bot start)
+    notional = 0
+
+    # the quantity of coins to buy or sell in the order
     quantity = 0
 
     # BTC amount
@@ -116,12 +120,9 @@ class Trading():
 
 
     def buy(self, symbol, quantity, buyPrice, profitableSellingPrice):
-
-        # Do you have an open order?
+        # check open orders
         self.check_order()
-
         try:
-
             # Create order
             orderId = Orders.buy_limit(symbol, quantity, buyPrice)
 
@@ -367,11 +368,10 @@ class Trading():
 
     def calc(self, lastBid):
         try:
-
-            #Estimated sell price considering commision
-            return lastBid + (lastBid * self.option.profit / 100) + (lastBid *self.commision)
-            #return lastBid + (lastBid * self.option.profit / 100)
-
+            sell_price = lastBid + (lastBid * self.option.profit / 100)
+            commision = (lastBid * self.commision)
+            # estimated sell price considering commision
+            return sell_price + commision
         except Exception as e:
             print('Calc Error: %s' % (e))
             return
@@ -384,42 +384,43 @@ class Trading():
     def action(self, symbol):
         #import ipdb; ipdb.set_trace()
 
-        # Order amount
+        # the quantity of coins to buy or sell in the order
         quantity = self.quantity
-        print('QTY: ' + str(quantity))
-        # Fetches the ticker price
+
+        # get current ticker price
         lastPrice = Orders.get_ticker(symbol)
-        print('LAST: ' + str(lastPrice))
-        # Order book prices
+
+        # get buy and sell prices from order book
         lastBid, lastAsk = Orders.get_order_book(symbol)
 
-        # Target buy price, add little increase #87
+        # target buy price with little increase
         buyPrice = lastBid + self.increasing
-        print('BUY: ' + str(buyPrice))
-        # Target sell price, decrease little 
+        #buyPrice = lastPrice + self.increasing
+
+        # target sell price with little decrease
         sellPrice = lastAsk - self.decreasing
-        print('SELL: ' + str(sellPrice) + '\n')
-        # Spread ( profit )
+
+        # profitable selling price
         profitableSellingPrice = self.calc(lastBid)
 
         # Check working mode
         if self.option.mode == 'range':
-
             buyPrice = float(self.option.buyprice)
             sellPrice = float(self.option.sellprice)
             profitableSellingPrice = sellPrice
 
-        # Screen log
+        # screen log
         if self.option.prints and self.order_id == 0:
             spreadPerc = (lastAsk/lastBid - 1) * 100.0
-            #print('price:%.8f buyp:%.8f sellp:%.8f-bid:%.8f ask:%.8f spread:%.2f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc))
-            self.logger.debug('price:%.8f buyprice:%.8f sellprice:%.8f bid:%.8f ask:%.8f spread:%.2f  Originalsellprice:%.8f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc, profitableSellingPrice-(lastBid *self.commision)   ))
+            #print('price:%.8f buyp:%.8f sellp:%.8f bid:%.8f ask:%.8f spread:%.2f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc))
+            print('price:%.8f buyp:%.8f sellp:%.8f bid:%.8f ask:%.8f spread:%.2f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc))
+            print('\n')
+            self.logger.debug('price:%.8f buyprice:%.8f sellprice:%.8f bid:%.8f ask:%.8f spread:%.2f Originalsellprice:%.8f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc, profitableSellingPrice-(lastBid *self.commision)   ))
 
         # analyze = threading.Thread(target=analyze, args=(symbol,))
         # analyze.start()
 
         if self.order_id > 0:
-
             # Profit mode
             if self.order_data is not None:
 
@@ -448,13 +449,13 @@ class Trading():
 
         '''
         Did profit get caught
-        if ask price is greater than profit price, 
-        buy with my buy price,    
+        if ask price is greater than profit price,
+        buy with my buy price,
         '''
         if (lastAsk >= profitableSellingPrice and self.option.mode == 'profit') or \
            (lastPrice <= float(self.option.buyprice) and self.option.mode == 'range'):
             self.logger.info ("MOde: {0}, Lastsk: {1}, Profit Sell Price {2}, ".format(self.option.mode, lastAsk, profitableSellingPrice))
-
+            print(self.order_id)
             if self.order_id == 0:
                 self.buy(symbol, quantity, buyPrice, profitableSellingPrice)
 
@@ -487,54 +488,78 @@ class Trading():
     def validate(self):
 
         valid = True
+
+        print('\n')
+        print('COIN SETTINGS')
+        print('\n')
+
+        # current symbol
         symbol = self.option.symbol
+        print('Trading symbol: %s' % symbol)
+
+        # get symbol settings
         filters = self.filters()['filters']
 
-        # Order book prices
+        # get order book prices
         lastBid, lastAsk = Orders.get_order_book(symbol)
 
+        # get current price
         lastPrice = Orders.get_ticker(symbol)
+        #print('Current price: %s' % lastPrice)
 
+        # minimal quantity
         minQty = float(filters['LOT_SIZE']['minQty'])
-        minPrice = float(filters['PRICE_FILTER']['minPrice'])
-        minNotional = float(filters['MIN_NOTIONAL']['minNotional'])
-        quantity = float(self.option.quantity)
+        #print('Minimal quantity: %s' % minQty)
 
-        # stepSize defines the intervals that a quantity/icebergQty can be increased/decreased by.
+        # minimal price
+        minPrice = float(filters['PRICE_FILTER']['minPrice'])
+        #print('Minimal price: %s' % minPrice)
+
+        # minimal price for buy or sell
+        minNotional = float(filters['MIN_NOTIONAL']['minNotional'])
+        print('Minimal notional: %s $' % minNotional)
+
+        # quantity from options
+        quantity = float(self.option.quantity)
+        #print('quantity: %s' % quantity)
+
+        # stepSize defines the intervals that a quantity/icebergQty can be increased/decreased by
         stepSize = float(filters['LOT_SIZE']['stepSize'])
+        print('Lot step: %s' % stepSize)
 
         # tickSize defines the intervals that a price/stopPrice can be increased/decreased by
         tickSize = float(filters['PRICE_FILTER']['tickSize'])
+        print('Price step: %s $' % tickSize)
 
-        # If option increasing default tickSize greater than
+        # check if option increasing size greater than tickSize
         if (float(self.option.increasing) < tickSize):
             self.increasing = tickSize
 
-        # If option decreasing default tickSize greater than
+        # check if option decreasing size greater than tickSize
         if (float(self.option.decreasing) < tickSize):
             self.decreasing = tickSize
 
-        # Just for validation
+        # just for validation
         lastBid = lastBid + self.increasing
 
-        # Set static
-        # If quantity or amount is zero, minNotional increase 10%
+        # check if quantity or amount is zero, minNotional increase 10%
         quantity = (minNotional / lastBid)
         quantity = quantity + (quantity * 10 / 100)
         notional = minNotional
 
+        # calculate amount to quantity
         if self.amount > 0:
-            # Calculate amount to quantity
             quantity = (self.amount / lastBid)
 
+        # check quantity
         if self.quantity > 0:
-            # Format quantity step
             quantity = self.quantity
 
         quantity = self.format_step(quantity, stepSize)
         notional = lastBid * float(quantity)
 
-        # Set Globals
+        # set globals
+        self.notional = notional
         self.quantity = quantity
         self.step_size = stepSize
 
@@ -545,7 +570,7 @@ class Trading():
             valid = False
 
         if lastPrice < minPrice:
-            #print('Invalid price, minPrice: %.8f (u: %.8f)' % (minPrice, lastPrice))
+            print('Invalid price, minPrice: %.8f (u: %.8f)' % (minPrice, lastPrice))
             self.logger.error('Invalid price, minPrice: %.8f (u: %.8f)' % (minPrice, lastPrice))
             valid = False
 
@@ -562,38 +587,39 @@ class Trading():
 
         cycle = 0
         actions = []
-
         symbol = self.option.symbol
 
-        print('Auto Trading for Binance.com @yasinkuyu')
-        print('\n')
-
-        # Validate symbol
+        # validate symbol
         self.validate()
 
-        print('Started...')
-        print('Trading Symbol: %s' % symbol)
-        print('Buy Quantity: %.8f' % self.quantity)
-        print('Stop-Loss Amount: %s' % self.stop_loss)
-        #print('Estimated profit: %.8f' % (self.quantity*self.option.profit))
+        print('\n')
+        print('ACCOUNT SETTINGS')
+        print('\n')
+        print('Account type: %s' % Account.account_type())
+        print('We can trade: %s' % Account.can_trade())
+        print('Balance usdt: %s $' % Account.balance())
+        print('Connection status: %s ms' % Account.server_status())
+
+        print('\n')
+        print('BOT SETTINGS')
+        print('\n')
+        print('Order price: %.8f $' % self.notional)
+        print('Order amount: %s' % self.quantity)
+        print('Stoploss amount: %s' % self.stop_loss)
+        print('Token comission: %s $' % self.commision)
+        #print('Estimated profit: %s' % (self.quantity * self.option.profit))
 
         if self.option.mode == 'range':
-
            if self.option.buyprice == 0 or self.option.sellprice == 0:
                print('Please enter --buyprice / --sellprice\n')
                exit(1)
-
            print('Range Mode Options:')
            print('\tBuy Price: %.8f', self.option.buyprice)
            print('\tSell Price: %.8f', self.option.sellprice)
-
         else:
-            print('Profit Mode Options:')
-            print('\tPreferred Profit: %0.2f%%' % self.option.profit)
-            print('\tBuy Price : (Bid+ --increasing %.8f)' % self.increasing)
-            print('\tSell Price: (Ask- --decreasing %.8f)' % self.decreasing)
-
-        print('\n')
+            print('Target profit: %0.2f %%' % self.option.profit)
+            print('Buy price: bid + %s' % self.increasing)
+            print('Sell price: ask - %s + comission' % self.decreasing)
 
         startTime = time.time()
 
@@ -614,6 +640,10 @@ class Trading():
                 cycle = cycle + 1
 
         """
+
+        print('\n')
+        print('BOT STARTED')
+        print('\n')
 
         while (cycle <= self.option.loop):
 
