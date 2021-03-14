@@ -6,14 +6,15 @@ client = BinanceAPI(config.api_key, config.api_secret)
 
 class Orders():
 
+    # create limit buy order
     @staticmethod
-    def buy_limit(symbol, quantity, buyPrice):
-        order = client.buy_limit(symbol, quantity, buyPrice)
+    def buy_limit(symbol, quantity, buy_price):
+        order = client.buy_limit(symbol, quantity, buy_price)
         if 'msg' in order:
             Messages.get(order['msg'])
-        # Buy order created.
         return order['orderId']
 
+    # create limit sell order
     @staticmethod
     def sell_limit(symbol, quantity, sell_price):
         order = client.sell_limit(symbol, quantity, sell_price)
