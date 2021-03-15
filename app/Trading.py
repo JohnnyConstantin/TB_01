@@ -194,86 +194,36 @@ class Trading():
                 self.order_id = 0
         return False
 
-    def sell(self, symbol, quantity, orderId, sell_price, last_price):
+    def sell(self, symbol, quantity, sell_price, last_price):
 
-        '''
-        The specified limit will try to sell until it reaches.
-        If not successful, the order will be canceled.
-        '''
+# TODO: NEED FLOAT FORMAT REWORK
 
-# TODO: REWORK
         sell_price = float('{:.8f}'.format(sell_price))
         last_price = float('{:.8f}'.format(last_price))
 
-        # get buy order
+        # check test mode
         if self.option.test_mode == True:
-            orderId = 1
-            buy_order = Database.read(orderId)
 
-            #if buy_order == None:
-            #    return
+            # create sell order
+            self.sell_order_id = 2
+            sell_order = [self.sell_order_id, symbol, 0, sell_price, 'SELL', quantity, last_price]
 
         else:
-            buy_order = Orders.get_order(symbol, orderId)
-
-            # check buy order
-            if self.buy_order_check(buy_order) == False:
-                return
-
-        # create sell order
-        if self.option.test_mode == True:
-            orderId = 2
-            order = [orderId, symbol, 0, sell_price, 'SELL', quantity, last_price]
-
-        else:
+            # create sell order
             sell_order = Orders.sell_limit(symbol, quantity, sell_price)
-            orderId = sell_order['orderId']
+            self.sell_order_id = sell_order['orderId']
+
             # wait before check sell order
             time.sleep(self.WAIT_TIME_CHECK_SELL)
 
-            if sell_order_check() == True:
+            if self.sell_order_check() == True:
                 return
 
-# TODO: ADD USDT AFTER SELL ORDER
-
         #self.logger.info('Sell order create id: %d' % orderId)
-        self.logger.info('Sell order created id: %d, q: %s, p: %s, Last price :%s' % (orderId, quantity, float(sell_price), last_price))
+        self.logger.info('Sell order created id: %d, q: %s, p: %s, Last price :%s' % (self.sell_order_id, quantity, float(sell_price), last_price))
 
         # write sell order to database
-        Database.write([orderId, symbol, 0, sell_price, 'SELL', quantity, last_price])
-        self.sell_order_id = 2
-
-        # if all sales trials fail, the grievance is stop-loss
-        if self.stop_loss > 0:
-
-            # If sell order failed after 5 seconds, 5 seconds more wait time before selling at loss
-            time.sleep(self.WAIT_TIME_CHECK_SELL)
-
-            if self.stop(symbol, quantity, orderId, last_price):
-
-                if Orders.get_order(symbol, orderId)['status'] != 'FILLED':
-                    #print('We apologize... Sold at loss...')
-                    self.logger.info('We apologize... Sold at loss...')
-
-            else:
-                #print('We apologize... Cant sell even at loss... Please sell manually... Stopping program...')
-                self.logger.info('We apologize... Cant sell even at loss... Please sell manually... Stopping program...')
-                self.cancel(symbol, orderId)
-                exit(1)
-
-            while (sell_status != 'FILLED'):
-                time.sleep(self.WAIT_TIME_CHECK_SELL)
-                sell_status = Orders.get_order(symbol, orderId)['status']
-                lastPrice = Orders.get_ticker(symbol)
-                #print('Status: %s Current price: %.8f Sell price: %.8f' % (sell_status, lastPrice, sell_price))
-                #print('Sold! Continue trading...')
-
-                self.logger.info('Status: %s Current price: %.8f Sell price: %.8f' % (sell_status, lastPrice, sell_price))
-                self.logger.info('Sold! Continue trading...')
-
-
-            self.order_id = 0
-            self.order_data = None
+        Database.write(sell_order)
 
     # check sell order
     def sell_order_check(self, sell_order):
@@ -353,6 +303,38 @@ class Trading():
             return True
         else:
             return False
+
+    def stop1(self, symbol, quantity, orderId, last_price, sell_price):
+
+        # if all sales trials fail, the grievance is stop-loss
+        if self.stop_loss > 0:
+
+            # If sell order failed after 5 seconds, 5 seconds more wait time before selling at loss
+            time.sleep(self.WAIT_TIME_CHECK_SELL)
+
+            if self.stop(symbol, quantity, orderId, last_price):
+
+                if Orders.get_order(symbol, orderId)['status'] != 'FILLED':
+                    #print('We apologize... Sold at loss...')
+                    self.logger.info('We apologize... Sold at loss...')
+
+            else:
+                #print('We apologize... Cant sell even at loss... Please sell manually... Stopping program...')
+                self.logger.info('We apologize... Cant sell even at loss... Please sell manually... Stopping program...')
+                self.cancel(symbol, orderId)
+                exit(1)
+
+            while (sell_status != 'FILLED'):
+                time.sleep(self.WAIT_TIME_CHECK_SELL)
+                sell_status = Orders.get_order(symbol, orderId)['status']
+                lastPrice = Orders.get_ticker(symbol)
+                #print('Status: %s Current price: %.8f Sell price: %.8f' % (sell_status, lastPrice, sell_price))
+                #print('Sold! Continue trading...')
+
+                self.logger.info('Status: %s Current price: %.8f Sell price: %.8f' % (sell_status, lastPrice, sell_price))
+                self.logger.info('Sold! Continue trading...')
+
+            self.order_data = None
 
     def check(self, symbol, orderId, quantity):
         # If profit is available and there is no purchase from the specified price, take it with the market.
@@ -454,23 +436,23 @@ class Trading():
         # the quantity of coins to buy or sell in the order
         quantity = self.quantity
 
-        # get current ticker price
+        # get current price
         lastPrice = Orders.get_ticker(symbol)
 
-        # get buy and sell prices from order book
+        # get last buy and last sell prices from order book
         lastBid, lastAsk = Orders.get_order_book(symbol)
 
-        # target buy price with little increase
+        # prepare target buy price with little increase
         buyPrice = lastBid + self.increasing
         #buyPrice = lastPrice + self.increasing
 
-        # target sell price with little decrease
+        # prepare target sell price with little decrease
         sellPrice = lastAsk - self.decreasing
 
         # profitable selling price
         profitableSellingPrice = self.calc(lastBid)
 
-        # Check working mode
+        # check working mode
         if self.option.mode == 'range':
             buyPrice = float(self.option.buyprice)
             sellPrice = float(self.option.sellprice)
@@ -480,15 +462,21 @@ class Trading():
         if self.option.prints and self.order_id == 0:
             spreadPerc = (lastAsk/lastBid - 1) * 100.0
             #print('price:%.8f buyp:%.8f sellp:%.8f bid:%.8f ask:%.8f spread:%.2f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc))
-            #print('price:%.8f buyp:%.8f sellp:%.8f bid:%.8f ask:%.8f spread:%.2f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc))
-            #print('\n')
             self.logger.debug('price:%.8f buyprice:%.8f sellprice:%.8f bid:%.8f ask:%.8f spread:%.2f Originalsellprice:%.8f' % (lastPrice, buyPrice, profitableSellingPrice, lastBid, lastAsk, spreadPerc, profitableSellingPrice-(lastBid *self.commission)   ))
 
         # analyze = threading.Thread(target=analyze, args=(symbol,))
         # analyze.start()
 
+        # check test mode
         if self.option.test_mode == True:
+            # get buy order from database
             buy_order = Database.read(1)
+
+            # check if buy order exists - try to sell it later
+            if buy_order != None:
+                self.buy_order_id = 1
+
+            # check if buy order exists and last price >= buy price in order - successfully bought
             if buy_order != None and lastPrice >= buy_order[3]:
                 Database.delete(1)
                 self.buy_order_id = 0
@@ -497,7 +485,14 @@ class Trading():
                 print('COIN AMOUNT: ' + str(self.coin_quantity))
                 print('COIN BUY PRICE: ' + str(buy_order[3]) + ' $')
 
+            # get sell order from database
             sell_order = Database.read(2)
+
+            # check if sell order exists
+            if sell_order != None:
+                self.sell_order_id = 2
+
+            # check if sell order exists and last price >= sell price in order - successfully sold
             if sell_order != None and lastPrice >= sell_order[3]:
                 Database.delete(2)
                 self.sell_order_id = 0
@@ -508,13 +503,28 @@ class Trading():
                 print('BALANCE: TODO')
                 self.order_id = 0
 
-        if self.option.test_mode == True:
-            order_data = Database.read(2)
-            if order_data != None:
-                self.order_data = order_data
-                self.order_id = 1
+        else:
+            # check if buy order not exist - successfully bought
+            buy_order = Orders.get_order(symbol, self.buy_order_id)
 
+            if self.buy_order_check(buy_order) == False:
+                self.buy_order_id = 0
+
+            # check if sell order not exist - successfully sold
+            sell_order = Orders.get_order(symbol, self.sell_order_id)
+
+            if self.sell_order_check(sell_order) == False:
+                self.sell_order_id = 0
+
+# TODO: COMPARE STOP VS STOP1
+
+#        if self.sell_order_id != 0:
+#            # if all sales trials fail, the grievance is stop-loss
+#            self.stop1(symbol, quantity, self.sell_order_id, lastPrice, sell_order[3])
+
+        # check if coins amount > 0 or buy order exists - try to sell it
         if self.coin_quantity > 0 or self.buy_order_id > 0:
+
             # profit mode
             if self.order_data is not None:
                 order = self.order_data
@@ -531,41 +541,23 @@ class Trading():
             if self.option.mode == 'range':
                 profitableSellingPrice = self.option.sellprice
 
-            '''            
-            If the order is complete, 
-            try to sell it.
-            '''
-
-            # perform sell action
-
+# TODO: SPAM SELL ORDERS OR NOT ?
+            # start sell action
             if self.sell_order_id == 0:
-                sellAction = threading.Thread(target = self.sell, args = (symbol, quantity, self.order_id, profitableSellingPrice, lastPrice,))
+                sellAction = threading.Thread(target = self.sell, args = (symbol, quantity, profitableSellingPrice, lastPrice,))
                 sellAction.start()
                 return
 
-        '''
-        Did profit get caught
-        if ask price is greater than profit price,
-        buy with my buy price,
-        '''
-
-# 3.9195
-# 3.9037153499999997
-# 2021-03-14 13:29:28,561,561 INFO AVAUSDT: Mode: profit, Lastsk: 3.9195, Profit Sell Price 3.9037153499999997,0
-#
-# Message : Account has insufficient balance for requested action.
-# price:3.90750000 buyp:3.89040000 sellp:3.90391605 bid:3.89030000 ask:3.91950000
-# spread:0.75
-        #print(str(lastAsk) + ' ' + str(profitableSellingPrice))
-        if (lastAsk >= profitableSellingPrice and self.option.mode == 'profit') or \
+        # check if ask price is greater than profit price, buy with my buy price
+        if (lastAsk >= profitableSellingPrice and self.option.mode == 'profit' and \
+           self.buy_order_id == 0 and self.coin_quantity == 0) or \
            (lastPrice <= float(self.option.buyprice) and self.option.mode == 'range'):
-            if self.order_id == 0:
-                self.logger.info ("Mode: {0}, LastAsk: {1}, Profit Sell Price {2}, ".format(self.option.mode, lastAsk, profitableSellingPrice))
-                self.buy(symbol, quantity, buyPrice, profitableSellingPrice)
+              self.logger.info("Mode: {0}, LastAsk: {1}, Profit Sell Price {2}, ".format(self.option.mode, lastAsk, profitableSellingPrice))
+              self.buy(symbol, quantity, buyPrice, profitableSellingPrice)
 
-                # Perform check/sell action
-                # checkAction = threading.Thread(target=self.check, args=(symbol, self.order_id, quantity,))
-                # checkAction.start()
+              # Perform check/sell action
+              # checkAction = threading.Thread(target=self.check, args=(symbol, self.buy_order_id, quantity,))
+              # checkAction.start()
 
     def logic(self):
         return 0
