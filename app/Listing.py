@@ -197,14 +197,15 @@ class Listing():
 
            startTime = time.time()
 
-           # wait some before check new coins
-           time.sleep(self.wait_time)
-
 #           lister = threading.Thread(target=self.action, args=())
 #           actions.append(lister)
 #           lister.start()
 
            self.action()
+
+           # wait some before check new coins
+           time.sleep(self.wait_time)
+
            endTime = time.time()
 
            if endTime - startTime < self.wait_time:
