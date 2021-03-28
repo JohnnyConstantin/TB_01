@@ -114,3 +114,9 @@ class Orders():
             return info
         except Exception as e:
             print('get_info Exception: %s' % e)
+
+    # return list of products currently listed on binance
+    @staticmethod
+    def get_products():
+        #return client.get_products()
+        return client.get_exchange_info()

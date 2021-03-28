@@ -21,7 +21,7 @@ formater_str = '%(asctime)s,%(msecs)d %(levelname)s %(name)s: %(message)s'
 formatter = logging.Formatter(formater_str)
 datefmt="%Y-%b-%d %H:%M:%S"
 
-LOGGER_ENUM = {'debug':'debug.log', 'trading':'trades.log','errors':'general.log'}
+LOGGER_ENUM = {'debug': 'debug.log', 'trading': 'trades.log', 'errors': 'general.log'}
 #LOGGER_FILE = LOGGER_ENUM['pre']
 LOGGER_FILE = "binance-trader.log"
 FORMAT = '%(asctime)-15s - %(levelname)s:  %(message)s'
@@ -104,7 +104,7 @@ class Trading():
             self.commission = TOKEN_COMMISSION
 
         # setup Logger
-        self.logger =  self.setup_logger(self.option.symbol, debug = self.option.debug)
+        self.logger = self.setup_logger(self.option.symbol, debug=self.option.debug)
 
         # if test mode enabled, delete buy and sell orders
         if self.option.test_mode == True:
@@ -112,7 +112,7 @@ class Trading():
             Database.delete(2)
 
     # Function setup as many loggers as you want
-    def setup_logger(self, symbol, debug = True):
+    def setup_logger(self, symbol, debug=True):
 
         #handler = logging.FileHandler(log_file)
         #handler.setFormatter(formatter)
@@ -131,9 +131,10 @@ class Trading():
         logger.addHandler(stout_handler)
         return logger
 
+    # create buy order
     def buy(self, coin_symbol, coin_amount, buy_price, pro_price):
 
-        # check if open orders exists, exit
+        # check if open order exists, exit
         self.check_order(self.buy_order_id)
 
         try:
@@ -153,40 +154,132 @@ class Trading():
             self.logger.debug('Buy error: %s' % (e))
             time.sleep(self.WAIT_TIME_BUY_SELL)
 
-# TODO: TRY, EXCEPT
-    # check buy order status
-    def buy_order_check(self, coin_symbol, buy_order):
+    # cancel order
+    def order_cancel(self, coin_symbol, order_id, order_action):
 
-        # if buy order status is 'FILLED' - all ok
-        if buy_order['status'] == 'FILLED' and buy_order['side'] == 'BUY':
-            #print('Buy order filled... Try sell...')
-            self.logger.info('Buy order filled... Try sell...')
+        # check test mode
+        if self.option.test_mode == True:
+
+            if order_action == 'BUY':
+                self.buy_order_id = 0
+                return
+
+            if order_action == 'SELL':
+                self.sell_order_id = 0
+                return
+
+        # get order
+        order = Orders.get_order(coin_symbol, order_id)
+
+        # if order does not exist, all ok
+        if not order:
+
+            # release buy order id
+            if order_action == 'BUY':
+                self.buy_order_id = 0
+
+            # release sell order id
+            if order_action == 'SELL':
+                self.sell_order_id = 0
+            return
+
+        # if order exists with status 'NEW' or 'CANCELLED', cancel order
+        if order['status'] == 'NEW' or order['status'] != 'CANCELLED':
+            Orders.cancel_order(coin_symbol, order_id)
+
+            # release buy order id
+            if order_action == 'BUY':
+                self.buy_order_id = 0
+
+            # release sell order id
+            if order_action == 'SELL':
+                self.sell_order_id = 0
+
+    # check buy or sell order status
+    def order_check(self, coin_symbol, coin_amount, order, sell_price, last_price, order_action):
+
+        # wait some before check order
+        time.sleep(self.WAIT_TIME_CHECK_SELL)
+
+        # check test mode
+        if self.option.test_mode == True:
+
+            # get current price
+            last_price = Orders.get_ticker(coin_symbol)
+            last_price = self.float_format(last_price, self.price_step)
+
+            # check if order exists and last price >= price in order, all ok
+            if last_price >= order[3]:
+
+                # close buy order
+                if order_action == 'BUY':
+
+                    # write sell order to log
+                    self.logger.info(order_action + ' order created id: %d, amount: %s, price: %s, last price :%s, profit: %s' % (
+                        self.buy_order_id, coin_amount, sell_price, last_price, self.option.profit))
+                    self.buy_order_id = 0
+                    self.coin_amount = self.coin_amount + order[5]
+                    print('SUCCESSFULLY BOUGHT COINS!')
+                    print('COIN AMOUNT: ' + str(self.coin_amount))
+                    print('COIN BUY PRICE: ' + str(order[3]) + ' $')
+                    print('BALANCE: TODO')
+                    return True
+
+                # close sell order
+                if order_action == 'SELL':
+
+                    # write sell order to log
+                    self.logger.info(order_action + ' order created id: %d, amount: %s, price: %s, last price :%s, profit: %s' % (
+                        self.sell_order_id, coin_amount, sell_price, last_price, self.option.profit))
+                    self.sell_order_id = 0
+                    self.coin_amount = self.coin_amount - order[5]
+                    print('SUCCESSFULLY SOLD COINS!')
+                    print('COIN AMOUNT: ' + str(self.coin_amount))
+                    print('COIN SELL PRICE: ' + str(order[3]) + ' $')
+                    print('BALANCE: TODO')
+                    return True
+
+            self.order_cancel(coin_symbol, order['orderId'], order_action)
+            return False
+
+        # if order status is 'FILLED', all ok
+        if order['status'] == 'FILLED' and order['side'] == order_action:
+
+            # write sell order to log
+            self.logger.info(order_action + ' order created id: %d, amount: %s, price: %s, last price :%s, profit: %s' % (
+            order['orderId'], coin_amount, sell_price, last_price, self.option.profit))
+
+            # write sell order to database
+            Database.write([order['orderId'], coin_symbol, 0, sell_price, order_action, coin_amount, last_price])
             return True
 
         else:
-            # wait before check buy order status
+            # wait some before check order status
             time.sleep(self.WAIT_TIME_CHECK_BUY_SELL)
 
-            # if buy order status is 'FILLED' - all ok
-            if buy_order['status'] == 'FILLED' and buy_order['side'] == 'BUY':
-                #print('Buy order filled after 0.1 second... Try sell...')
-                self.logger.info('Buy order filled after 0.1 second... Try sell...')
+            # if order status is 'FILLED', all ok
+            if order['status'] == 'FILLED' and order['side'] == order_action:
 
-            # if buy order status is 'PARTIALLY_FILLED' - cancel order
-            elif buy_order['status'] == 'PARTIALLY_FILLED' and buy_order['side'] == 'BUY':
-                #print('Buy order partially filled... Try sell... Cancel remaining buy...')
-                self.logger.info('Buy order partially filled... Try sell... Cancel remaining buy...')
-                self.cancel(coin_symbol, buy_order)
+                # write sell order to log
+                self.logger.info(order_action + ' order created id: %d, amount: %s, price: %s, last price :%s, profit: %s' % (
+                    order['orderId'], coin_amount, sell_price, last_price, self.option.profit))
 
-            # else - cancel order
+                # write sell order to database
+                Database.write([order['orderId'], coin_symbol, 0, sell_price, order_action, coin_amount, last_price])
+                return True
+
+            # if order status is 'PARTIALLY_FILLED', cancel order
+            elif order['status'] == 'PARTIALLY_FILLED' and order['side'] == order_action:
+                self.logger.info(order_action + ' order partially filled ... try cancel ...')
+                self.order_cancel(coin_symbol, order['orderId'], order_action)
+
+            # cancel order
             else:
-                self.cancel(coin_symbol, buy_order)
-                #print('Buy order fail (Not filled) Cancel order...')
-                self.logger.warning('Buy order fail (Not filled) Cancel order...')
-                self.order_id = 0
+                self.logger.warning(order_action + ' order fail, not filled ... try cancel ...')
+                self.order_cancel(coin_symbol, order['orderId'], order_action)
         return False
 
-    def sell(self, coin_symbol, coin_amount, sell_price, last_price):
+    def order_sell(self, coin_symbol, coin_amount, sell_price, last_price):
 
         # check test mode
         if self.option.test_mode == True:
@@ -196,39 +289,16 @@ class Trading():
             sell_order = [self.sell_order_id, coin_symbol, 0, sell_price, 'SELL', coin_amount, last_price]
 
         else:
+
             # create sell order
             sell_order = Orders.sell_limit(coin_symbol, coin_amount, sell_price)
             self.sell_order_id = sell_order['orderId']
 
-            # wait before check sell order
-            time.sleep(self.WAIT_TIME_CHECK_SELL)
+        # check order status, if true, all ok
+        if self.order_check(self, coin_symbol, coin_amount, sell_order, sell_price, last_price, 'SELL') == False:
+            return
 
-            if self.sell_order_check() == True:
-                return
-
-        #self.logger.info('Sell order create id: %d' % orderId)
-        self.logger.info('Sell order created id: %d, q: %s, p: %s, Last price :%s' % (self.sell_order_id, coin_amount, float(sell_price), last_price))
-
-        # write sell order to database
-        Database.write(sell_order)
-
-    # check sell order
-    def sell_order_check(self, sell_order):
-        # if sell order is 'FILLED' - all ok
-        if sell_order['status'] == 'FILLED':
-
-            #print('Sell order (Filled) Id: %d' % orderId)
-            #print('LastPrice : %.8f' % last_price)
-            #print('Profit: %%%s. Buy price: %.8f Sell price: %.8f' % (self.option.profit, float(sell_order['price']), sell_price))
-
-            self.logger.info('Sell order (Filled) Id: %d' % sell_order['orderId'])
-            self.logger.info('LastPrice : %.8f' % sell_order['last_price'])
-            self.logger.info('Profit: %%%s. Buy price: %.8f Sell price: %.8f' % (self.option.profit, float(sell_order['price']), sell_order['last_price']))
-
-            self.order_id = 0
-            self.order_data = None
-            return True
-        return False
+# TODO: STOP LOSS
 
     def stop(self, coin_symbol, coin_amount, orderId, last_price):
         # If the target is not reached, stop-loss.
@@ -382,25 +452,6 @@ class Trading():
                 trading_size += 1
                 continue
 
-    # if order is not filled, cancel it
-    def cancel(self, coin_symbol, orderId):
-
-        # get order
-        order = Orders.get_order(coin_symbol, orderId)
-
-        # if order does not exist - all ok
-        if not order:
-            self.order_id = 0
-            self.order_data = None
-            return True
-
-        # if order exists with status 'NEW' or 'CANCELLED' - cancel order
-        if order['status'] == 'NEW' or order['status'] != 'CANCELLED':
-            Orders.cancel_order(coin_symbol, orderId)
-            self.order_id = 0
-            self.order_data = None
-            return True
-
     def calc(self, last_bid):
         try:
             sell_price = last_bid + (last_bid * self.option.profit / 100)
@@ -454,6 +505,29 @@ class Trading():
         # analyze = threading.Thread(target=analyze, args=(symbol,))
         # analyze.start()
 
+        # dict_keys(['timezone', 'serverTime', 'rateLimits', 'exchangeFilters', 'symbols'])
+        # symbol keys:
+        #{'symbol': 'SUPERUSDT', 'status': 'TRADING', 'baseAsset': 'SUPER', 'baseAssetPrecision': 8,
+        # 'quoteAsset': 'USDT', 'quotePrecision': 8, 'quoteAssetPrecision': 8, 'baseCommissionPrecision': 8,
+        # 'quoteCommissionPrecision': 8,
+        # 'orderTypes': ['LIMIT', 'LIMIT_MAKER', 'MARKET', 'STOP_LOSS_LIMIT', 'TAKE_PROFIT_LIMIT'],
+        # 'icebergAllowed': True, 'ocoAllowed': True, 'quoteOrderQtyMarketAllowed': True, 'isSpotTradingAllowed': True,
+        # 'isMarginTradingAllowed': False, 'filters': [
+        #    {'filterType': 'PRICE_FILTER', 'minPrice': '0.00100000', 'maxPrice': '10000.00000000',
+        #     'tickSize': '0.00100000'},
+        #    {'filterType': 'PERCENT_PRICE', 'multiplierUp': '5', 'multiplierDown': '0.2', 'avgPriceMins': 5},
+        #    {'filterType': 'LOT_SIZE', 'minQty': '0.00100000', 'maxQty': '90000.00000000', 'stepSize': '0.00100000'},
+        #    {'filterType': 'MIN_NOTIONAL', 'minNotional': '10.00000000', 'applyToMarket': True, 'avgPriceMins': 5},
+        #    {'filterType': 'ICEBERG_PARTS', 'limit': 10},
+        #    {'filterType': 'MARKET_LOT_SIZE', 'minQty': '0.00000000', 'maxQty': '190515.25378179',
+        #     'stepSize': '0.00000000'}, {'filterType': 'MAX_NUM_ORDERS', 'maxNumOrders': 200},
+        #    {'filterType': 'MAX_NUM_ALGO_ORDERS', 'maxNumAlgoOrders': 5}], 'permissions': ['SPOT']}
+        coins_all = Orders.get_products()['symbols']
+        #print(str(coins_all))
+        # status: TRADING, BREAK
+        for coin in coins_all:
+            print(str(coin['symbol']) + ' - ' + str(coin['status']))
+
         # check test mode
         if self.option.test_mode == True:
             # get buy order from database
@@ -463,31 +537,12 @@ class Trading():
             if buy_order != None:
                 self.buy_order_id = 1
 
-            # check if buy order exists and last price >= buy price in order - successfully bought
-            if buy_order != None and last_price >= buy_order[3]:
-                Database.delete(1)
-                self.buy_order_id = 0
-                self.coin_amount = self.coin_amount + buy_order[5]
-                print('SUCCESSFULLY BOUGHT COINS!')
-                print('COIN AMOUNT: ' + str(self.coin_amount))
-                print('COIN BUY PRICE: ' + str(buy_order[3]) + ' $')
-
             # get sell order from database
             sell_order = Database.read(2)
 
             # check if sell order exists
             if sell_order != None:
                 self.sell_order_id = 2
-
-            # check if sell order exists and last price >= sell price in order - successfully sold
-            if sell_order != None and last_price >= sell_order[3]:
-                Database.delete(2)
-                self.sell_order_id = 0
-                self.coin_amount = self.coin_amount - sell_order[5]
-                print('SUCCESSFULLY SOLD COINS!')
-                print('COIN AMOUNT: ' + str(self.coin_amount))
-                print('COIN SELL PRICE: ' + str(sell_order[3]) + ' $')
-                print('BALANCE: TODO')
 
         else:
             # check if buy order not exist - successfully bought
@@ -531,7 +586,7 @@ class Trading():
 
             # start sell action
             if self.sell_order_id == 0 and self.buy_order_id == 1 and self.coin_amount > 0:
-                sellAction = threading.Thread(target=self.sell, args=(coin_symbol, self.coin_amount, pro_price, last_price,))
+                sellAction = threading.Thread(target=self.order_sell, args=(coin_symbol, self.coin_amount, pro_price, last_price,))
                 sellAction.start()
                 return
 
