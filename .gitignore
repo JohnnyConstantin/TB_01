@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Private keys
+app/config.py
+*.xml
+
+*.iml
+
+db/orders.db
