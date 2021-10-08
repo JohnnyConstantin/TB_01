@@ -2,7 +2,8 @@
 import sys
 import argparse
 sys.path.insert(0, './app')
-from Trading import Trading
+from app.trading import Trading
+
 
 if __name__ == '__main__':
 

@@ -1,8 +1,7 @@
-# -*- coding: UTF-8 -*-
-# @yasinkuyu
+# TODO
 
-# TODO 
-class analyze():
+
+class Analyze:
     
     @staticmethod
     def position():

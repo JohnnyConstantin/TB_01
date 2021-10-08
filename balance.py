@@ -1,11 +1,10 @@
 import sys
-
 sys.path.insert(0, './app')
-
 import time
 import config
 from datetime import timedelta, datetime
 from BinanceAPI import BinanceAPI
+
 
 class Binance:
 

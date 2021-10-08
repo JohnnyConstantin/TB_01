@@ -5,18 +5,19 @@ import sqlite3
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../db/coins.db')
 conn = sqlite3.connect(path, check_same_thread=False)
 
-class Database():
+
+class Database:
 
 # TODO: not complated
 
     # create a database connection to the sqlite database
     def connection(db_file):
-        conn = None
+        con = None
         try:
-            conn = sqlite3.connect(db_file)
+            con = sqlite3.connect(db_file)
         except Error as e:
             print(e)
-        return conn
+        return con
 
     # Save order; data = orderid,symbol,amount,price,side,quantity,profit
     @staticmethod
@@ -39,15 +40,22 @@ class Database():
         cur.execute('DELETE FROM orders WHERE orderid = ?', (orderid,))
         conn.commit()
 
-    # save symbol in table
-    @staticmethod
+    @staticmethod  # write symbol into table
     def write_symbol(table, data):
+        data = data if type(data) == list else tuple(data)
         cur = conn.cursor()
-        cur.execute('INSERT INTO "' + table + '" VALUES (?, ?, ?)', data)
+        cur.execute('INSERT INTO "' + table + '" VALUES (?, ?, ?, ?)', data)
+        # print('ADD: ' + str(data[0]))
         conn.commit()
 
-    # query symbol from table
-    @staticmethod
+    @staticmethod  # delete symbol from table
+    def delete_symbol(table, symbol):
+        cur = conn.cursor()
+        cur.execute('DELETE FROM "' + table + '" WHERE symbol = ?', (symbol,))
+        # print('DEL: ' + str(symbol))
+        conn.commit()
+
+    @staticmethod  # read symbol from table
     def read_symbol(table, symbol):
         cur = conn.cursor()
         cur.execute('SELECT * FROM "' + table + '" WHERE symbol = ?', (symbol,))
@@ -56,10 +64,12 @@ class Database():
     # query all rows from table
     @staticmethod
     def read_table(table):
+        data = []  # list of dicts by column
         cur = conn.cursor()
         cur.execute('SELECT * FROM "' + table + '"')
-        return cur
-#        return cur.fetchone()
+        cols = tuple([d[0] for d in cur.description])
+        for row in cur: data.append(dict(zip(cols, row)))
+        return data
 
     # delete all rows in table
     @staticmethod

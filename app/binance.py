@@ -10,7 +10,8 @@ try:
 except ImportError:
     from urllib.parse import urlencode
 
-class BinanceAPI:
+
+class Binance:
     
     BASE_URL = "https://www.binance.com/api/v1"
     BASE_URL_V3 = "https://api.binance.com/api/v3"

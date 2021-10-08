@@ -1,6 +1,3 @@
-# -*- coding: UTF-8 -*-
-# @yasinkuyu
-
 # Define Python imports
 import os
 import sys
@@ -12,10 +9,10 @@ import logging
 import logging.handlers
 
 # Define Custom imports
-from Database import Database
-from Account import Account
-from Orders import Orders
-from Logger import CustomFormatter
+from app.database import Database
+from app.account import Account
+from app.binance_handler import Orders
+from app.logger import CustomFormatter
 
 formater_str = '%(asctime)s,%(msecs)d %(levelname)s %(name)s: %(message)s'
 formatter = logging.Formatter(formater_str)
@@ -36,7 +33,7 @@ BNB_COMMISSION   = 0.0005
 #((eth*0.05)/100)
 
 
-class Trading():
+class Trading:
 
     # Define trade vars
     buy_order_id = 0
